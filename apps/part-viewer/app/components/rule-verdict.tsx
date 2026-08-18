@@ -14,7 +14,7 @@ import type { Unit } from '../shared/units'
  * and what each held.
  *
  * This is the whole argument for showing the Engine's own measurements. A
- * verdict saying "milling L/D is 7.1" cannot be checked; one saying `maxDepth`
+ * verdict saying "milling L/D is 7.1" cannot be checked; one saying `zMax − zMin`
  * 50.80 over `facts.cd.terminalCornerRadius` × 2 can be argued with — and
  * argued with against the raw datasheet sitting in the same panel.
  */

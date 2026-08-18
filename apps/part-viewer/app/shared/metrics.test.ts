@@ -20,7 +20,8 @@ const hole = (facts: Record<string, unknown> = {}, sheet: Record<string, unknown
       facts: { kind: 'Hole', diameter: 6.35, ...facts },
       zMax: 0,
       zMin: -25.4,
-      partZMax: 0,
+      extendedZMax: 0,
+      extendedZMin: -25.4,
       ...sheet,
     },
   }) as unknown as PartFeature
@@ -47,21 +48,17 @@ describe('readMetrics', () => {
     expect(Object.values(readMetrics(bare)).every((value) => value === null)).toBe(true)
   })
 
-  test('reads degrees as degrees, whichever spelling the kernel used', () => {
-    // Kernel 0.4.0 renames `angleRad` to `angleDeg` as it converts. Reading the
-    // wrong one either way is an error of 57×.
-    const inRadians = hole({ kind: 'Chamfer', bevel: { angleRad: Math.PI / 4 } })
+  test('reads chamfer angles in the API’s degree unit', () => {
     const inDegrees = hole({ kind: 'Chamfer', bevel: { angleDeg: 45 } })
 
-    expect(readMetrics(inRadians).chamferAngle).toBeCloseTo(45, 4)
     expect(readMetrics(inDegrees).chamferAngle).toBeCloseTo(45, 4)
   })
 
-  test('falls back to the tallest surface cut this way up when no partZMax is reported', () => {
-    const older = hole({}, { partZMax: undefined })
+  test('uses the highest extended bound for features cut from the same direction', () => {
+    const older = hole()
     const context = partContext([
       older,
-      { ...older, datasheet: { ...older.datasheet, zMax: 10 } } as PartFeature,
+      { ...older, datasheet: { ...older.datasheet, extendedZMax: 10 } } as PartFeature,
     ])
 
     // The reach is measured from the highest surface the Engine attributed to

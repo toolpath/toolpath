@@ -32,7 +32,8 @@ const hole = (facts: Record<string, unknown> = {}, sheet: Record<string, unknown
       facts: { kind: 'Hole', diameter: 6.35, ...facts },
       zMax: 0,
       zMin: -25.4,
-      partZMax: 0,
+      extendedZMax: 0,
+      extendedZMin: -25.4,
       ...sheet,
     },
   }) as unknown as PartFeature
@@ -100,7 +101,7 @@ describe('silence', () => {
       note: '',
     }
 
-    const reported = hole({ hasSharpCorner: false })
+    const reported = hole({ kind: 'Three', hasSharpCorner: false })
     const [reading] = readEveryRule([flag], 'blind_hole', readMetrics(reported))
 
     // "No sharp corner" is the ordinary case, not a missing measurement.

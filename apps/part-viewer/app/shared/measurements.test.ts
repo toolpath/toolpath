@@ -11,16 +11,60 @@ import { measurements, partTop, stripMeasurements } from './measurements'
 const PZ = { x: 0, y: 0, z: 1 }
 const NY = { x: 0, y: -1, z: 0 }
 
-const feature = (over: Partial<PartFeature> & { datasheet?: unknown }): PartFeature =>
-  ({
+type FeatureFixture = Omit<Partial<PartFeature>, 'datasheet'> & { datasheet?: unknown }
+
+const fixtureDatasheet = (value: unknown) => {
+  const sheet = (value ?? {}) as Record<string, unknown>
+  const factOverrides = (sheet.facts ?? {}) as Record<string, unknown>
+  const { facts: _facts, ...sheetFields } = sheet
+  const zMin = typeof sheet.zMin === 'number' ? sheet.zMin : 0
+  const zMax = typeof sheet.zMax === 'number' ? sheet.zMax : 0
+
+  return {
+    featureType: 'Pocket',
+    zMin,
+    zMax,
+    extendedZMin: typeof sheet.extendedZMin === 'number' ? sheet.extendedZMin : zMin,
+    extendedZMax: typeof sheet.extendedZMax === 'number' ? sheet.extendedZMax : zMax,
+    radialStockToLeave: 0,
+    axialStockToLeave: 0,
+    toleranceBand: { atolIgnore: 0, atolDeviate: 0, atolMax: 0 },
+    hasFloor: false,
+    hasWall: false,
+    floorishArea: 0,
+    wallishArea: 0,
+    facts: {
+      kind: 'Pocket',
+      cd: {
+        ignore: { min: 0, max: 0 },
+        deviate: { min: 0, max: 0 },
+        effectiveAdaptive: { min: 0, max: 0 },
+        terminalCornerRadius: 0,
+      },
+      maxBottomDiameter: 0,
+      filletRadius: 0,
+      filletHeight: 0,
+      ...factOverrides,
+    },
+    ...sheetFields,
+  } as never
+}
+
+const feature = (over: FeatureFixture): PartFeature => {
+  const { datasheet, ...rest } = over
+
+  return {
     featureId: 'id',
     featureTag: 'tag',
     featureType: 'pocket',
     regionIdxs: [1],
     machiningDirection: PZ,
     axis: null,
-    ...over,
-  }) as PartFeature
+    datasheet:
+      datasheet === undefined || datasheet === null ? datasheet : fixtureDatasheet(datasheet),
+    ...rest,
+  } as PartFeature
+}
 
 const regions = [
   { idx: 1, shapeKind: 'Plane' },
@@ -53,7 +97,7 @@ describe('partTop', () => {
   })
 
   it('is null when nothing cut that way reports a depth', () => {
-    expect(partTop([feature({ datasheet: {} })], feature({ datasheet: {} }))).toBeNull()
+    expect(partTop([feature({ datasheet: null })], feature({ datasheet: null }))).toBeNull()
   })
 })
 
@@ -67,10 +111,10 @@ describe('measurements', () => {
     expect(valueOf(subject, 'featureDepth', [taller])).toBe('6.00 mm')
   })
 
-  it('prefers the extended bounds, which is what a tool has to clear', () => {
+  it('uses feature bounds rather than the extended approach range for depth', () => {
     const subject = feature({ datasheet: { extendedZMax: 12, zMax: 10, extendedZMin: 2, zMin: 4 } })
 
-    expect(valueOf(subject, 'featureDepth')).toBe('10.00 mm')
+    expect(valueOf(subject, 'featureDepth')).toBe('6.00 mm')
   })
 
   it('reads the terminal tool off the band every feature carries', () => {
@@ -120,7 +164,7 @@ describe('measurements', () => {
    * carries almost none of them.
    */
   it('leaves out what this feature type does not report', () => {
-    const wall = feature({ featureType: 'wall', datasheet: {} })
+    const wall = feature({ featureType: 'wall', datasheet: null })
     const keys = rowsFor(wall).map((row) => row.key)
 
     expect(keys).toEqual(['faces'])
@@ -188,7 +232,7 @@ describe('the tools a feature admits', () => {
   })
 
   it('states what gets into an undercut, which is not what fits once there', () => {
-    const shown = rows({ maxEntryCd: 3.175 })
+    const shown = rows({ kind: 'Tslot', maxEntryCd: 3.175 })
 
     expect(shown.find((row) => row.key === 'entryCutter')?.from).toBe('facts.maxEntryCd')
     expect(shown.find((row) => row.key === 'entryCutter')?.value).toContain('3.17')
@@ -224,15 +268,6 @@ describe('a chamfer says what angle it is', () => {
     // Under `bevel`, which is why the panel showed no angle while the rule
     // judging chamfer angles read one off the same datasheet.
     expect(angleOf(chamfer({ bevel: { angleDeg: 56 } }))?.value).toBe('56.0°')
-  })
-
-  it('takes the older spelling in radians and says it converted', () => {
-    // Kernel 0.4.0 renamed the field as it converted. Reading the wrong one
-    // either way is an error of 57×.
-    const row = angleOf(chamfer({ bevel: { angleRad: Math.PI / 4 } }))
-
-    expect(row?.value).toBe('45.0°')
-    expect(row?.from).toContain('angleRad')
   })
 
   it('says nothing where the Engine reported no angle', () => {

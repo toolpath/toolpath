@@ -1,7 +1,5 @@
-import type { CdFacts, FeatureDatasheet, FeatureFacts } from './datasheet'
-import { readDatasheet } from './datasheet'
+import type { CdData, FeatureDatasheet, FeatureDatasheetFacts } from '@toolpath/api'
 import type { PartFeature } from './contracts'
-import { radiansToDegrees } from './units'
 
 /**
  * A stable key for a machining direction, for grouping features cut the same
@@ -32,7 +30,7 @@ export interface MachineEnvelope {
  *
  * Every metric reports **which datasheet fields it read and what they held**,
  * not just the number it arrived at. A verdict that says "milling L/D is 7.1"
- * cannot be checked; one that says "`maxDepth` 50.80 ÷ `facts.cd.
+ * cannot be checked; one that says "`zMax − zMin` 50.80 ÷ `facts.cd.
  * terminalCornerRadius` × 2 = 7.06" can be argued with, and argued with against
  * the raw report sitting in the same panel. That is what `Reading` carries.
  *
@@ -41,10 +39,7 @@ export interface MachineEnvelope {
  * Lengths are millimetres and areas square millimetres, exactly as reported —
  * conversion happens at the edges, when a number is shown or typed.
  *
- * Angles are degrees. Kernel 0.4.0 makes that the API's own contract and
- * renames the fields as it converts them (`angleRad` → `angleDeg`), so both
- * spellings are read: the new one is taken as it stands and the old one is
- * converted. Reading the wrong one either way is an error of 57×.
+ * Angles are degrees, as the Engine API specifies.
  *
  * Ratios and flags are unitless.
  */
@@ -161,15 +156,10 @@ export interface PartContext {
 /**
  * The part's top in this feature's direction, as the Engine reports it.
  *
- * Kernel 0.5.0 puts `partZMax` on the datasheet in the same frame as `zMin`, so
- * the reach is a subtraction the Engine vouches for rather than one this app
- * inferred. Until a report carries it, the fallback stands: the highest `zMax`
- * among features cut the same way, which is the highest *surface* the Engine
- * attributed to that direction and not the top of the stock — the reason the
- * reach figures read too large.
+ * The Engine reports a feature's bounds but not a separate stock top. The
+ * highest `extendedZMax` among features cut in the same direction is therefore
+ * the top from which reach is measured.
  */
-const reportedPartTop = (datasheet: FeatureDatasheet): number | null => stated(datasheet.partZMax)
-
 export const NO_PART: PartContext = {
   topByDirection: new Map(),
   sides: null,
@@ -183,8 +173,7 @@ export const NO_PART: PartContext = {
  * start from. `zMax` stops at the material and makes every reach in the part
  * read short by the clearance.
  */
-const zOf = (datasheet: FeatureDatasheet | null): number | undefined =>
-  datasheet ? (datasheet.extendedZMax ?? datasheet.zMax ?? datasheet.maxDepth) : undefined
+const zOf = (datasheet: FeatureDatasheet | null): number | undefined => datasheet?.extendedZMax
 
 export const partContext = (
   features: ReadonlyArray<PartFeature>,
@@ -196,7 +185,7 @@ export const partContext = (
   const topByDirection = new Map<string, number>()
 
   for (const feature of features) {
-    const top = zOf(readDatasheet(feature))
+    const top = zOf(feature.datasheet ?? null)
 
     if (typeof top === 'number' && Number.isFinite(top)) {
       const key = directionKey(feature.machiningDirection)
@@ -212,22 +201,9 @@ export const partContext = (
   }
 }
 
-/** Stands in where a formula is asked of a feature that has no datasheet. */
-const EMPTY_DATASHEET: FeatureDatasheet = { facts: { kind: 'Face' } as FeatureFacts }
-
-/** The part's own top, where this feature's datasheet states one. */
-const reportedPartTopOf = (feature: PartFeature): number | null => {
-  const datasheet = readDatasheet(feature)
-
-  return datasheet ? reportedPartTop(datasheet) : null
-}
-
 /** The part-level facts as they apply to one feature. */
 export const contextFor = (feature: PartFeature, part: PartContext): MetricContext => ({
-  partTopZ:
-    reportedPartTopOf(feature) ??
-    part.topByDirection.get(directionKey(feature.machiningDirection)) ??
-    null,
+  partTopZ: part.topByDirection.get(directionKey(feature.machiningDirection)) ?? null,
   partSides: part.sides,
   ...(part.machine ? { machine: part.machine } : {}),
 })
@@ -291,33 +267,6 @@ const stated = (value: number | null | undefined): number | null =>
 const flag = (value: boolean | undefined): number | null =>
   value === undefined ? null : value ? 1 : 0
 
-const degrees = (radians: number | null | undefined): number | null => {
-  const value = stated(radians)
-
-  return value === null ? null : radiansToDegrees(value)
-}
-
-/**
- * An angle, in degrees, from whichever spelling the report carries.
- *
- * Kernel 0.4.0 completes the API's contract — every length in millimetres,
- * every angle in degrees — and renames the radian fields as it converts them:
- * `angleRad` becomes `angleDeg`, `fullConeRad` becomes `fullConeDeg`,
- * `taperRad` becomes `taperDeg`. Reading both spellings means the number is
- * right on either side of that release; converting the wrong one would be out
- * by 57×.
- */
-const angle = (
-  degreesValue: number | null | undefined,
-  radiansValue: number | null | undefined,
-): { value: number | null; path: string; radians: boolean } => {
-  const asDegrees = stated(degreesValue)
-
-  return asDegrees === null
-    ? { value: degrees(radiansValue), path: 'rad', radians: true }
-    : { value: asDegrees, path: 'deg', radians: false }
-}
-
 /**
  * A quotient, where both sides are stated and the divisor is not zero.
  *
@@ -329,7 +278,7 @@ const angle = (
 const ratio = (top: number | null, bottom: number | null): number | null =>
   top === null || bottom === null || bottom === 0 ? null : top / bottom
 
-const factsOf = (datasheet: FeatureDatasheet): FeatureFacts | null => datasheet.facts ?? null
+const factsOf = (datasheet: FeatureDatasheet): FeatureDatasheetFacts => datasheet.facts
 
 /**
  * Where this feature's cutter-diameter facts live, and what they are.
@@ -338,7 +287,7 @@ const factsOf = (datasheet: FeatureDatasheet): FeatureFacts | null => datasheet.
  * its own under the `Three` it nests — so the path is returned alongside the
  * values, because "which `cd`" is exactly the thing a reader needs to check.
  */
-const cdAt = (datasheet: FeatureDatasheet): { cd: CdFacts | null; path: string } => {
+const cdAt = (datasheet: FeatureDatasheet): { cd: CdData | null; path: string } => {
   const facts = factsOf(datasheet)
 
   if (facts && 'cd' in facts && facts.cd) {
@@ -386,7 +335,7 @@ export const sharpCorner = (datasheet: FeatureDatasheet): boolean | null =>
  * mount sample `ignore.min` is stated on 44 features of 72.
  */
 const cutterFromBand = (
-  cd: CdFacts | null,
+  cd: CdData | null,
   path: string,
 ): { value: number; path: string } | null => {
   // In order of preference, `ignore.min` first.
@@ -471,33 +420,20 @@ const requiredCutterSources = (datasheet: FeatureDatasheet): Array<Reading> => {
 /**
  * The top and bottom of the feature, in part space.
  *
- * `minDepth` and `maxDepth` are **Z coordinates**, not depths, whatever their
- * names say: every feature on a real part reports a non-zero `minDepth`, some
- * report negative values, and a flat face reports the two as equal. A coming
- * kernel renames them `zMin` and `zMax`; both spellings are read here so the
- * app spans that change rather than emptying out on the day it lands.
+ * `zMin` and `zMax` are Z coordinates in the feature's machining frame, not
+ * depths. A depth is their difference.
  */
-const zTop = (datasheet: FeatureDatasheet): number | null =>
-  stated(datasheet.zMax ?? datasheet.maxDepth)
+const zTop = (datasheet: FeatureDatasheet): number | null => stated(datasheet.zMax)
 
-const zBottom = (datasheet: FeatureDatasheet): number | null =>
-  stated(datasheet.zMin ?? datasheet.minDepth)
+const zBottom = (datasheet: FeatureDatasheet): number | null => stated(datasheet.zMin)
 
-/** Which spelling this report used, so a reading can name the real field. */
-const zPath = (datasheet: FeatureDatasheet, end: 'max' | 'min'): string => {
-  const renamed = datasheet.zMax !== undefined || datasheet.zMin !== undefined
-
-  if (end === 'max') {
-    return renamed ? 'zMax' : 'maxDepth'
-  }
-
-  return renamed ? 'zMin' : 'minDepth'
-}
+const zPath = (_datasheet: FeatureDatasheet, end: 'max' | 'min'): string =>
+  end === 'max' ? 'zMax' : 'zMin'
 
 /**
  * How deep the feature is: the distance between its top and its bottom.
  *
- * Reading `maxDepth` alone, as this did, was reading a coordinate as a
+ * Reading `zMax` alone would read a coordinate as a
  * measurement — on the part that exposed it, one wall's "depth" came out as
  * −1.48. Every reach ratio in the app is built on this number, so it was wrong
  * everywhere at once and quietly: a negative or tiny depth simply put features
@@ -539,13 +475,11 @@ const reachOf = (datasheet: FeatureDatasheet, context: MetricContext): number | 
 }
 
 const reachSources = (datasheet: FeatureDatasheet, context: MetricContext): Array<Reading> => [
-  datasheet.partZMax === undefined
-    ? {
-        path: 'part top',
-        value: context.partTopZ,
-        note: 'derived: the highest zMax reported by any feature cut from this same direction, since this report carries no partZMax',
-      }
-    : { path: 'partZMax', value: stated(datasheet.partZMax) },
+  {
+    path: 'part top',
+    value: context.partTopZ,
+    note: 'derived: the highest extendedZMax reported by any feature cut from this same direction',
+  },
   {
     path: zPath(datasheet, 'min'),
     value: zBottom(datasheet),
@@ -583,22 +517,55 @@ const nested = (
 ): { value: unknown; path: string } => {
   const facts = factsOf(datasheet)
 
-  if (facts && key in facts) {
-    return {
-      value: (facts as Record<string, unknown>)[key],
-      path: `facts.${key}`,
-    }
-  }
+  const source = facts.kind === 'Chamfer' ? facts.three : facts
+  const path = facts.kind === 'Chamfer' ? `facts.three.${key}` : `facts.${key}`
 
-  if (facts?.kind === 'Chamfer' && facts.three) {
-    return {
-      value: (facts.three as Record<string, unknown>)[key],
-      path: `facts.three.${key}`,
-    }
-  }
+  if (!source) return { value: undefined, path }
 
-  return { value: undefined, path: `facts.${key}` }
+  switch (key) {
+    case 'filletHeight':
+      return {
+        value:
+          source.kind === 'Boss' || source.kind === 'Hole' || source.kind === 'Pocket'
+            ? source.filletHeight
+            : undefined,
+        path,
+      }
+    case 'filletRadius':
+      return {
+        value:
+          source.kind === 'Boss' ||
+          source.kind === 'Dovetail' ||
+          source.kind === 'Hole' ||
+          source.kind === 'Pocket' ||
+          source.kind === 'Three'
+            ? source.filletRadius
+            : undefined,
+        path,
+      }
+    case 'hasSharpCorner':
+      return { value: source.kind === 'Three' ? source.hasSharpCorner : undefined, path }
+    case 'maxBottomDiameter':
+      return {
+        value:
+          source.kind === 'Boss' ||
+          source.kind === 'Face' ||
+          source.kind === 'Pocket' ||
+          source.kind === 'Three'
+            ? source.maxBottomDiameter
+            : undefined,
+        path,
+      }
+  }
 }
+
+type FactsKind = FeatureDatasheetFacts['kind']
+type FactsByKind = { [K in FactsKind]: Extract<FeatureDatasheetFacts, { kind: K }> }
+
+const isFactsKind = <K extends FactsKind>(
+  facts: FeatureDatasheetFacts,
+  kind: K,
+): facts is FactsByKind[K] => facts.kind === kind
 
 const nestedBoolean = (datasheet: FeatureDatasheet, key: 'hasSharpCorner'): boolean | null => {
   const found = nested(datasheet, key)
@@ -616,58 +583,49 @@ const nestedNumber = (
 }
 
 /** A fact only one `facts.kind` carries, read only from that kind. */
-const onKind = (
+const onKind = <K extends FactsKind>(
   datasheet: FeatureDatasheet,
-  kind: FeatureFacts['kind'],
-  key: string,
+  kind: K,
+  key: keyof FactsByKind[K],
 ): { value: unknown; path: string; wrongKind: boolean } => {
   const facts = factsOf(datasheet)
 
   return {
-    // Every `facts` variant is an object of known keys; reading one by name
-    // needs an index signature the union does not declare, and widening to
-    // `Record` is the safe direction — the value stays `unknown` and is
-    // narrowed by the caller.
-    value: facts?.kind === kind ? ({ ...facts } as Record<string, unknown>)[key] : undefined,
-    path: `facts.${key}`,
-    wrongKind: facts?.kind !== kind,
+    value: isFactsKind(facts, kind) ? Reflect.get(facts, key) : undefined,
+    path: `facts.${String(key)}`,
+    wrongKind: !isFactsKind(facts, kind),
   }
 }
 
-const kindNumber = (
+const kindNumber = <K extends FactsKind>(
   datasheet: FeatureDatasheet,
-  kind: FeatureFacts['kind'],
-  key: string,
+  kind: K,
+  key: keyof FactsByKind[K],
 ): number | null => {
   const found = onKind(datasheet, kind, key)
 
   return stated(typeof found.value === 'number' || found.value === null ? found.value : undefined)
 }
 
-const kindReading = (
+const kindReading = <K extends FactsKind>(
   datasheet: FeatureDatasheet,
-  kind: FeatureFacts['kind'],
-  key: string,
-  { degrees: asDegrees = false }: { degrees?: boolean } = {},
+  kind: K,
+  key: keyof FactsByKind[K],
 ): Reading => {
   const found = onKind(datasheet, kind, key)
   const raw = kindNumber(datasheet, kind, key)
 
   return {
     path: found.path,
-    value: asDegrees ? degrees(raw) : raw,
-    ...(found.wrongKind
-      ? { note: `only a ${kind} feature reports this` }
-      : asDegrees
-        ? { note: `${raw ?? '—'} rad` }
-        : {}),
+    value: raw,
+    ...(found.wrongKind ? { note: `only a ${kind} feature reports this` } : {}),
   }
 }
 
-const kindFlag = (
+const kindFlag = <K extends FactsKind>(
   datasheet: FeatureDatasheet,
-  kind: FeatureFacts['kind'],
-  key: string,
+  kind: K,
+  key: keyof FactsByKind[K],
 ): number | null => {
   const found = onKind(datasheet, kind, key)
 
@@ -685,10 +643,7 @@ export const METRICS: ReadonlyArray<MetricSpec> = [
     id: 'millingLD',
     label: 'Milling L/D',
     quantity: 'ratio',
-    formula: (datasheet) =>
-      `${
-        datasheet.partZMax === undefined ? 'part top' : 'partZMax'
-      } − ${zPath(datasheet, 'min')} ÷ facts.cd.ignore.min`,
+    formula: (datasheet) => `part top − ${zPath(datasheet, 'min')} ÷ facts.cd.ignore.min`,
     note: 'Reach below the top of the part against the widest endmill the feature allows. Long and thin means chatter, and a tool hanging out of the holder.',
     read: (datasheet, context) => ratio(reachOf(datasheet, context), requiredCutter(datasheet)),
     sources: (datasheet, context) => [
@@ -700,10 +655,7 @@ export const METRICS: ReadonlyArray<MetricSpec> = [
     id: 'drillingLD',
     label: 'Drilling L/D',
     quantity: 'ratio',
-    formula: (datasheet) =>
-      `${
-        datasheet.partZMax === undefined ? 'part top' : 'partZMax'
-      } − ${zPath(datasheet, 'min')} ÷ facts.diameter`,
+    formula: (datasheet) => `part top − ${zPath(datasheet, 'min')} ÷ facts.diameter`,
     note: 'Reach down to the bottom of the hole over its diameter. Past about 4:1 a standard drill wants pecking or a longer series.',
     // The hole cannot admit a drill wider than itself, so its own diameter is
     // the largest tool allowed.
@@ -762,8 +714,7 @@ export const METRICS: ReadonlyArray<MetricSpec> = [
     id: 'depthBelowPartTop',
     label: 'Reach below top of part',
     quantity: 'length',
-    formula: (datasheet) =>
-      `${datasheet.partZMax === undefined ? 'part top' : 'partZMax'} − ${zPath(datasheet, 'min')}`,
+    formula: (datasheet) => `part top − ${zPath(datasheet, 'min')}`,
     note: "How far below the top of the part the tool has to reach before it cuts anything. Not the feature's own depth: a shallow floor at the bottom of a deep cavity is a long tool.",
     read: (datasheet, context) => reachOf(datasheet, context),
     sources: (datasheet, context) => reachSources(datasheet, context),
@@ -816,23 +767,18 @@ export const METRICS: ReadonlyArray<MetricSpec> = [
     quantity: 'angle',
     formula: (datasheet) => {
       const facts = factsOf(datasheet)
-      const chosen =
-        facts?.kind === 'Chamfer' ? angle(facts.bevel?.angleDeg, facts.bevel?.angleRad) : null
-
-      return chosen?.radians === false ? 'facts.bevel.angleDeg' : 'facts.bevel.angleRad in degrees'
+      return facts.kind === 'Chamfer' ? 'facts.bevel.angleDeg' : 'facts.bevel.angleDeg'
     },
     note: 'A chamfer at an angle the shop already grinds for is one pass with a chamfer mill.',
     read: (datasheet) => {
       const facts = factsOf(datasheet)
 
-      return facts?.kind === 'Chamfer'
-        ? angle(facts.bevel?.angleDeg, facts.bevel?.angleRad).value
-        : null
+      return facts.kind === 'Chamfer' ? stated(facts.bevel.angleDeg) : null
     },
     sources: (datasheet) => {
       const facts = factsOf(datasheet)
 
-      if (facts?.kind !== 'Chamfer') {
+      if (facts.kind !== 'Chamfer') {
         return [
           {
             path: 'facts.bevel.angleDeg',
@@ -842,13 +788,10 @@ export const METRICS: ReadonlyArray<MetricSpec> = [
         ]
       }
 
-      const chosen = angle(facts.bevel?.angleDeg, facts.bevel?.angleRad)
-
       return [
         {
-          path: `facts.bevel.angle${chosen.radians ? 'Rad' : 'Deg'}`,
-          value: chosen.value,
-          ...(chosen.radians && chosen.value !== null ? { note: 'converted from radians' } : {}),
+          path: 'facts.bevel.angleDeg',
+          value: stated(facts.bevel.angleDeg),
         },
       ]
     },
@@ -858,20 +801,10 @@ export const METRICS: ReadonlyArray<MetricSpec> = [
     label: 'Drill point angle',
     field: 'facts.fullConeDeg',
     quantity: 'angle',
-    formula: (datasheet) =>
-      kindNumber(datasheet, 'Hole', 'fullConeDeg') === null
-        ? 'facts.fullConeRad in degrees'
-        : 'facts.fullConeDeg',
+    formula: 'facts.fullConeDeg',
     note: 'A blind hole bottomed by a jobber or split point drill, rather than a flat needing a second tool.',
-    read: (datasheet) =>
-      angle(
-        kindNumber(datasheet, 'Hole', 'fullConeDeg'),
-        kindNumber(datasheet, 'Hole', 'fullConeRad'),
-      ).value,
-    sources: (datasheet) =>
-      kindNumber(datasheet, 'Hole', 'fullConeDeg') === null
-        ? [kindReading(datasheet, 'Hole', 'fullConeRad', { degrees: true })]
-        : [kindReading(datasheet, 'Hole', 'fullConeDeg')],
+    read: (datasheet) => kindNumber(datasheet, 'Hole', 'fullConeDeg'),
+    sources: (datasheet) => [kindReading(datasheet, 'Hole', 'fullConeDeg')],
   },
   {
     id: 'surfaceArea',
@@ -1192,14 +1125,8 @@ export const METRICS: ReadonlyArray<MetricSpec> = [
     field: 'facts.length',
     quantity: 'length',
     note: 'How far around the profile runs — the length of cut, not a size.',
-    // `lengthMm` before kernel 0.4.0, `length` after: an unsuffixed length is
-    // millimetres now that the units convention says so.
-    read: (datasheet) =>
-      kindNumber(datasheet, 'Profile', 'length') ?? kindNumber(datasheet, 'Profile', 'lengthMm'),
-    sources: (datasheet) =>
-      kindNumber(datasheet, 'Profile', 'length') === null
-        ? [kindReading(datasheet, 'Profile', 'lengthMm')]
-        : [kindReading(datasheet, 'Profile', 'length')],
+    read: (datasheet) => kindNumber(datasheet, 'Profile', 'length'),
+    sources: (datasheet) => [kindReading(datasheet, 'Profile', 'length')],
   },
   {
     id: 'undercutDepth',
@@ -1233,20 +1160,10 @@ export const METRICS: ReadonlyArray<MetricSpec> = [
     label: 'Taper angle',
     field: 'facts.taperDeg',
     quantity: 'angle',
-    formula: (datasheet) =>
-      kindNumber(datasheet, 'Dovetail', 'taperDeg') === null
-        ? 'facts.taperRad in degrees'
-        : 'facts.taperDeg',
+    formula: 'facts.taperDeg',
     note: "The dovetail's taper, which has to match a cutter ground for it.",
-    read: (datasheet) =>
-      angle(
-        kindNumber(datasheet, 'Dovetail', 'taperDeg'),
-        kindNumber(datasheet, 'Dovetail', 'taperRad'),
-      ).value,
-    sources: (datasheet) =>
-      kindNumber(datasheet, 'Dovetail', 'taperDeg') === null
-        ? [kindReading(datasheet, 'Dovetail', 'taperRad', { degrees: true })]
-        : [kindReading(datasheet, 'Dovetail', 'taperDeg')],
+    read: (datasheet) => kindNumber(datasheet, 'Dovetail', 'taperDeg'),
+    sources: (datasheet) => [kindReading(datasheet, 'Dovetail', 'taperDeg')],
   },
   {
     id: 'needsBallFinish',
@@ -1296,7 +1213,7 @@ export const metricQuantity = (id: MetricId | undefined): Quantity | null =>
 export const metricFormula = (
   id: MetricId,
   feature: PartFeature,
-  part: PartContext = NO_PART,
+  part?: PartContext,
 ): string | undefined => {
   const spec = METRIC_BY_ID.get(id)
 
@@ -1306,16 +1223,16 @@ export const metricFormula = (
 
   return typeof spec.formula === 'string'
     ? spec.formula
-    : spec.formula(readDatasheet(feature) ?? EMPTY_DATASHEET, contextFor(feature, part))
+    : spec.formula(feature.datasheet, contextFor(feature, part ?? partContext([feature])))
 }
 
 /** What a metric read off this feature, for showing the working. */
 export const metricSources = (
   id: MetricId,
   feature: PartFeature,
-  part: PartContext = NO_PART,
+  part?: PartContext,
 ): Array<Reading> => {
-  const context = contextFor(feature, part)
+  const context = contextFor(feature, part ?? partContext([feature]))
 
   const spec = METRIC_BY_ID.get(id)
 
@@ -1323,7 +1240,7 @@ export const metricSources = (
     return []
   }
 
-  const datasheet = readDatasheet(feature)
+  const datasheet = feature.datasheet
 
   return datasheet
     ? spec.sources(datasheet, context)
@@ -1403,9 +1320,9 @@ export const NO_METRICS: FeatureMetrics = {
  * cheaper to compute once per feature than to thread laziness through the
  * evaluator.
  */
-export const readMetrics = (feature: PartFeature, part: PartContext = NO_PART): FeatureMetrics => {
-  const context = contextFor(feature, part)
-  const datasheet = readDatasheet(feature)
+export const readMetrics = (feature: PartFeature, part?: PartContext): FeatureMetrics => {
+  const context = contextFor(feature, part ?? partContext([feature]))
+  const datasheet = feature.datasheet
 
   if (!datasheet) {
     return { ...NO_METRICS }

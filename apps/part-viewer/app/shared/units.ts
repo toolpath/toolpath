@@ -59,13 +59,3 @@ export function loadUnit(storage: Pick<Storage, 'getItem'> | null): Unit {
 export function saveUnit(storage: Pick<Storage, 'setItem'> | null, unit: Unit): void {
   storage?.setItem(STORAGE_KEY, unit)
 }
-
-/**
- * Kernel 0.4.0 makes degrees the API's contract and renames the fields as it
- * converts them (`angleRad` → `angleDeg`). Both spellings are still read, so
- * this is what the old one goes through — reading the wrong one either way is
- * an error of 57×.
- */
-export function radiansToDegrees(radians: number): number {
-  return (radians * 180) / Math.PI
-}

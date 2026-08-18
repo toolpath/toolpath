@@ -7,7 +7,7 @@ const readyEvent = {
     reportId: 'report-1',
     jobId: 'job-1',
     kernelVersion: 'test',
-    units: { length: 'mm', angle: 'rad' },
+    units: { length: 'mm', angle: 'deg' },
     regions: [],
     candidateDirections: [],
     meshPointCount: 0,
@@ -21,17 +21,44 @@ const readyEvent = {
     features: [
       {
         featureTag: 'hole-1',
-        featureType: 'blind_hole',
+        featureType: 'BlindHole',
         regionIdxs: [0],
         machiningDirection: { x: 0, y: 0, z: 1 },
         axis: { x: 0, y: 0, z: 1 },
-        // A datasheet with enough on it for a rule to have an opinion: 25.4 deep
-        // in a 6.35 bore is 4:1, which the shipped set calls `alright`.
+        // A current Engine datasheet with enough on it for a rule to have an
+        // opinion: 25.4 deep in a 6.35 bore is 4:1, which the shipped set calls
+        // `alright`.
         datasheet: {
-          facts: { kind: 'Hole', diameter: 6.35 },
+          featureType: 'BlindHole',
           zMax: 0,
           zMin: -25.4,
-          partZMax: 0,
+          extendedZMax: 0,
+          extendedZMin: -25.4,
+          radialStockToLeave: 0,
+          axialStockToLeave: 0,
+          toleranceBand: { atolIgnore: 0, atolDeviate: 0, atolMax: 0 },
+          hasFloor: true,
+          hasWall: true,
+          floorishArea: 0,
+          wallishArea: 0,
+          facts: {
+            kind: 'Hole',
+            diameter: 6.35,
+            fullConeDeg: 118,
+            isCounterbore: false,
+            holeProcess: 'Drill',
+            cd: {
+              ignore: { min: 6.35, max: 6.35 },
+              deviate: { min: 6.35, max: 6.35 },
+              effectiveAdaptive: { min: 6.35, max: 6.35 },
+              terminalCornerRadius: 0,
+            },
+            maxSpotDiameter: 0,
+            maxDrillDiameter: 6.35,
+            maxEndmillDiameter: 6.35,
+            filletRadius: 0,
+            filletHeight: 0,
+          },
         },
       },
     ],
@@ -196,7 +223,7 @@ test('shows the limits it judges by, and what they made of a feature', async ({ 
     .getByText('Features', { exact: true })
     .evaluate((element) => element.getBoundingClientRect().top)
   expect(featuresTop - unitBottom).toBeGreaterThanOrEqual(12)
-  await page.getByRole('button', { name: /Blind hole/ }).click()
+  await page.getByRole('button', { name: /BlindHole/ }).click()
   await page
     .getByRole('button', { name: /hole-1/ })
     .first()
@@ -212,7 +239,7 @@ test('shows the limits it judges by, and what they made of a feature', async ({ 
   // The arithmetic, then the fields it read and what each held. A ratio's
   // inputs are lengths, so they carry no ":1" — that would be a unit the
   // Engine never reported.
-  await expect(page.getByText('partZMax − zMin ÷ facts.diameter')).toBeVisible()
+  await expect(page.getByText('part top − zMin ÷ facts.diameter')).toBeVisible()
   await expect(page.getByText('6.35 mm', { exact: true }).last()).toBeVisible()
   // The fourth box bounds rats, and is where a refusal starts when a rule
   // names none of its own.
@@ -271,7 +298,7 @@ test('lets a limit be moved, and re-judges the part as it moves', async ({ page 
   await expect(temporaryRulesNotice).toBeVisible()
 
   await page.getByRole('tab', { name: 'Inspector' }).click()
-  await page.getByRole('button', { name: /Blind hole/ }).click()
+  await page.getByRole('button', { name: /BlindHole/ }).click()
   await page
     .getByRole('button', { name: /hole-1/ })
     .first()
@@ -406,7 +433,7 @@ test('scores every feature where it is named', async ({ page }) => {
   await openInspector(page)
 
   // In the summary's list, under the type that holds it.
-  await page.getByRole('button', { name: /Blind hole/ }).click()
+  await page.getByRole('button', { name: /BlindHole/ }).click()
   const row = page.getByRole('button', { name: /hole-1/ }).first()
   await expect(row).toContainText(/\d+/)
 
@@ -523,7 +550,7 @@ test('copies individual datasheet values and the raw API record', async ({ page 
     })
   })
 
-  await page.getByRole('button', { name: /Blind hole/ }).click()
+  await page.getByRole('button', { name: /BlindHole/ }).click()
   await page
     .getByRole('button', { name: /hole-1/ })
     .first()
@@ -578,7 +605,7 @@ test('opens a folded rule when its settings are asked for', async ({ page }) => 
 test('reads each feature as the keyboard reaches it', async ({ page }) => {
   await openInspector(page)
 
-  await page.getByRole('button', { name: /Blind hole/ }).click()
+  await page.getByRole('button', { name: /BlindHole/ }).click()
   await page.locator('[data-row="hole-1"]').first().focus()
 
   // No Enter: landing on the row is the request. Two gestures for one question

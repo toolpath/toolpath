@@ -1,6 +1,6 @@
+import { FeatureType as EngineFeatureType } from '@toolpath/api'
 import type { FeatureType } from '@toolpath/viewer'
-
-import { FACTS_KIND_BY_FEATURE_TYPE } from './datasheet'
+import type { Rule, RuleSet } from './rules'
 import { DEFAULT_PLAN_LIMITS } from './rules'
 
 /**
@@ -11,8 +11,7 @@ import { DEFAULT_PLAN_LIMITS } from './rules'
  * rule about a different thing. Until the type is reported the rule simply
  * never fires, which is what a rule naming an unknown type is supposed to do.
  */
-const THREADED_HOLE = 'threaded_hole'
-import type { Rule, RuleSet } from './rules'
+const THREADED_HOLE = EngineFeatureType.ThreadedBlindHole
 
 /**
  * The rules the app ships with: the DFM prototype's own set, rule for rule.
@@ -37,16 +36,16 @@ import type { Rule, RuleSet } from './rules'
  * `filleted_open_pocket` — so a list naming only `open_pocket` skips it in
  * silence. That is what happened: an undercut filleted T-slot with a 0.100 in
  * floor blend was judged by the reach rule alone, because
- * `undercut_filleted_tslot` appeared in no list here.
+ * `UndercutFilletedTslot` appeared in no list here.
  */
 const CAVITIES: ReadonlyArray<FeatureType> = [
-  'filleted_open_pocket',
-  'open_pocket',
-  'pocket',
-  'through_pocket',
-  'undercut_dovetail',
-  'undercut_filleted_tslot',
-  'undercut_tslot',
+  EngineFeatureType.FilletedOpenPocket,
+  EngineFeatureType.OpenPocket,
+  EngineFeatureType.Pocket,
+  EngineFeatureType.ThroughPocket,
+  EngineFeatureType.UndercutDovetail,
+  EngineFeatureType.UndercutFilletedTslot,
+  EngineFeatureType.UndercutTslot,
 ]
 
 /**
@@ -65,22 +64,32 @@ const CAVITIES: ReadonlyArray<FeatureType> = [
  * by default rather than silently unjudged — which is the failure this file
  * already has a paragraph about.
  */
-const MILLED: ReadonlyArray<FeatureType> = Object.entries(FACTS_KIND_BY_FEATURE_TYPE)
-  .filter(([, kind]) => kind !== 'Hole')
-  .map(([type]) => type)
+const HOLES: ReadonlyArray<FeatureType> = [
+  EngineFeatureType.BlindHole,
+  EngineFeatureType.FilletedBlindHole,
+  EngineFeatureType.ThroughHole,
+  EngineFeatureType.TaperedThroughHole,
+  EngineFeatureType.ThreadedBlindHole,
+  EngineFeatureType.ThreadedThroughHole,
+]
+
+const MILLED: ReadonlyArray<FeatureType> = Object.values(EngineFeatureType)
+  .filter((type) => !HOLES.includes(type))
   .sort()
 
 /** The prototype's "holes". */
-const HOLES: ReadonlyArray<FeatureType> = ['blind_hole', 'filleted_blind_hole', 'through_hole']
-
 /** The prototype's "chamfer" and "countersink". */
-const BEVELLED: ReadonlyArray<FeatureType> = ['chamfer', 'sink', 'slanted_face']
+const BEVELLED: ReadonlyArray<FeatureType> = [
+  EngineFeatureType.Chamfer,
+  EngineFeatureType.Sink,
+  EngineFeatureType.SlantedFace,
+]
 
 /** The prototype's "contour": a surface driven at a stepover, not a width. */
-const CONTOURED: ReadonlyArray<FeatureType> = ['contour_surface']
+const CONTOURED: ReadonlyArray<FeatureType> = [EngineFeatureType.ContourSurface]
 
 /** Cavities and profiles, where a corner can be drawn sharp. */
-const CORNERED: ReadonlyArray<FeatureType> = [...CAVITIES, 'profile']
+const CORNERED: ReadonlyArray<FeatureType> = [...CAVITIES, EngineFeatureType.Profile]
 
 export const DEFAULT_RULES: ReadonlyArray<Rule> = [
   {

@@ -1,4 +1,4 @@
-import type { Vec3 } from '@toolpath/api'
+import type { FeatureDatasheetFacts, Vec3 } from '@toolpath/api'
 import { sameDirection } from '@toolpath/viewer'
 import type { PartFeature } from './contracts'
 
@@ -27,6 +27,7 @@ export const asNumber = (value: unknown): number | null =>
 
 const labelForType = (value: string): string =>
   value
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
     .split('_')
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -47,20 +48,19 @@ export const directionLabel = ({ x, y, z }: Vec3): string => {
 
 const millimeters = (value: number): string => `${value.toFixed(value < 10 ? 2 : 1)} mm`
 
-export const facts = (feature: PartFeature): Record<string, unknown> => {
-  const sheet = asRecord(feature.datasheet)
-  return asRecord(sheet?.facts) ?? {}
-}
+export const facts = (feature: PartFeature): FeatureDatasheetFacts | null =>
+  feature.datasheet?.facts ?? null
 
 export const featureHeadline = (feature: PartFeature): string | undefined => {
   const featureFacts = facts(feature)
-  const diameter = asNumber(featureFacts.diameter)
+  const diameter = featureFacts?.kind === 'Hole' ? asNumber(featureFacts.diameter) : null
   if (diameter !== null) return `⌀ ${millimeters(diameter)}`
-  const radius = asNumber(featureFacts.filletRadius)
+  const radius =
+    featureFacts && 'filletRadius' in featureFacts ? asNumber(featureFacts.filletRadius) : null
   if (radius !== null) return `R ${millimeters(radius)}`
-  const sheet = asRecord(feature.datasheet)
-  const minimum = asNumber(sheet?.zMin ?? sheet?.minDepth)
-  const maximum = asNumber(sheet?.zMax ?? sheet?.maxDepth)
+  const sheet = feature.datasheet
+  const minimum = asNumber(sheet?.zMin)
+  const maximum = asNumber(sheet?.zMax)
   if (minimum !== null && maximum !== null && Math.abs(maximum - minimum) > 0.005) {
     return `Depth ${millimeters(maximum - minimum)}`
   }
@@ -87,7 +87,7 @@ export const filterFeatures = (features: readonly PartFeature[], query: string):
 }
 
 export const featureDetailRows = (feature: PartFeature): DetailRow[] => {
-  const sheet = asRecord(feature.datasheet)
+  const sheet = feature.datasheet
   const featureFacts = facts(feature)
   const rows: DetailRow[] = [
     { label: 'Feature tag', value: feature.featureTag },
@@ -95,11 +95,19 @@ export const featureDetailRows = (feature: PartFeature): DetailRow[] => {
     { label: 'Mesh regions', value: String(feature.regionIdxs.length) },
   ]
   const measurements: Array<[string, unknown, (value: number) => string]> = [
-    ['Diameter', featureFacts.diameter, millimeters],
-    ['Maximum depth', sheet?.maxDepth ?? sheet?.zMax, millimeters],
-    ['Minimum depth', sheet?.minDepth ?? sheet?.zMin, millimeters],
-    ['Fillet radius', featureFacts.filletRadius, (value) => `R ${millimeters(value)}`],
-    ['Tool diameter', asRecord(featureFacts.toolFit)?.toolDiameter, millimeters],
+    ['Diameter', featureFacts?.kind === 'Hole' ? featureFacts.diameter : undefined, millimeters],
+    ['Maximum depth', sheet?.zMax, millimeters],
+    ['Minimum depth', sheet?.zMin, millimeters],
+    [
+      'Fillet radius',
+      featureFacts && 'filletRadius' in featureFacts ? featureFacts.filletRadius : undefined,
+      (value) => `R ${millimeters(value)}`,
+    ],
+    [
+      'Tool diameter',
+      featureFacts?.kind === 'Three' ? featureFacts.toolFit.toolDiameter : undefined,
+      millimeters,
+    ],
   ]
   for (const [label, raw, format] of measurements) {
     const value = asNumber(raw)

@@ -12,7 +12,7 @@ import { evaluateFeature, evaluatePart, scoreFeature, scorePart } from './rules'
 const feature = (over: Record<string, unknown> = {}) =>
   ({
     featureTag: 'hole-1',
-    featureType: 'blind_hole',
+    featureType: 'BlindHole',
     regionIdxs: [0],
     machiningDirection: { x: 0, y: 0, z: 1 },
     axis: { x: 0, y: 0, z: 1 },
@@ -20,7 +20,8 @@ const feature = (over: Record<string, unknown> = {}) =>
       facts: { kind: 'Hole', diameter: 6.35 },
       zMax: 0,
       zMin: -25.4,
-      partZMax: 0,
+      extendedZMax: 0,
+      extendedZMin: -25.4,
     },
     ...over,
   }) as unknown as PartFeature

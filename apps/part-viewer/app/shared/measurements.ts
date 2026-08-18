@@ -1,6 +1,6 @@
 import type { PartFeature } from './contracts'
-import { asNumber, asRecord, facts } from './report'
-import { formatArea, formatLength, radiansToDegrees, type Unit } from './units'
+import { asNumber, facts } from './report'
+import { formatArea, formatLength, type Unit } from './units'
 
 /**
  * What a feature amounts to, in the order somebody asks it.
@@ -30,9 +30,9 @@ export interface Measurement {
 /**
  * The top of the part along one machining direction.
  *
- * The report carries no part top, so the highest `zMax` of everything cut this
- * way up stands in for it — which is what makes "how far down does the tool
- * reach before it cuts anything" answerable at all.
+ * The report carries no part top, so the highest `extendedZMax` of everything
+ * cut this way up stands in for it — which is what makes "how far down does the
+ * tool reach before it cuts anything" answerable at all.
  */
 export function partTop(features: readonly PartFeature[], feature: PartFeature): number | null {
   const { x, y, z } = feature.machiningDirection
@@ -41,8 +41,7 @@ export function partTop(features: readonly PartFeature[], feature: PartFeature):
   for (const other of features) {
     const direction = other.machiningDirection
     if (direction.x !== x || direction.y !== y || direction.z !== z) continue
-    const sheet = asRecord(other.datasheet)
-    const zMax = asNumber(sheet?.extendedZMax ?? sheet?.zMax ?? sheet?.maxDepth)
+    const zMax = asNumber(other.datasheet?.extendedZMax)
     if (zMax === null) continue
     top = top === null ? zMax : Math.max(top, zMax)
   }
@@ -88,19 +87,22 @@ export function measurements({
   const area = (value: number) => formatArea(value, unit)
 
   const rows: Measurement[] = []
-  const sheet = asRecord(feature.datasheet)
+  const sheet = feature.datasheet
   const sheetFacts = facts(feature)
 
-  // `extendedZMax` first — the feature plus the run-out a tool needs — then the
-  // newer names, then the older ones. Reading only `zMax` showed no depth at
-  // all on an older report.
-  const zTop = asNumber(sheet?.extendedZMax ?? sheet?.zMax ?? sheet?.maxDepth)
-  const zBottom = asNumber(sheet?.extendedZMin ?? sheet?.zMin ?? sheet?.minDepth)
+  const zTop = asNumber(sheet?.zMax)
+  const zBottom = asNumber(sheet?.zMin)
   const top = partTop(features, feature)
   const walls = asNumber(sheet?.wallishArea)
   const floors = asNumber(sheet?.floorishArea)
-  const cutter = asNumber(asRecord(asRecord(sheetFacts.cd)?.ignore)?.min)
-  const diameter = asNumber(sheetFacts.diameter)
+  const cd =
+    sheetFacts?.kind === 'Chamfer'
+      ? sheetFacts.three?.cd
+      : sheetFacts && 'cd' in sheetFacts
+        ? sheetFacts.cd
+        : undefined
+  const cutter = asNumber(cd?.ignore.min)
+  const diameter = sheetFacts?.kind === 'Hole' ? asNumber(sheetFacts.diameter) : null
 
   if (top !== null && zBottom !== null) {
     rows.push({
@@ -108,7 +110,7 @@ export function measurements({
       label: 'Depth below top of part',
       value: length(top - zBottom),
       from: 'part top − zMin',
-      note: 'the part top is the highest zMax of any feature cut from this same direction — the report carries no partZMax',
+      note: 'the part top is the highest extendedZMax of any feature cut from this same direction',
     })
   }
 
@@ -156,7 +158,7 @@ export function measurements({
   // Stated per kind where the Engine states them: a hole reports the drill and
   // the endmill it admits separately, and which of the two a shop reaches for
   // is the difference between one plunge and a helix.
-  const endmill = asNumber(sheetFacts.maxEndmillDiameter)
+  const endmill = sheetFacts?.kind === 'Hole' ? asNumber(sheetFacts.maxEndmillDiameter) : null
   if (endmill !== null && endmill > 0) {
     rows.push({
       key: 'maxEndmill',
@@ -167,7 +169,7 @@ export function measurements({
     })
   }
 
-  const drill = asNumber(sheetFacts.maxDrillDiameter)
+  const drill = sheetFacts?.kind === 'Hole' ? asNumber(sheetFacts.maxDrillDiameter) : null
   if (drill !== null && drill > 0) {
     rows.push({
       key: 'maxDrill',
@@ -181,7 +183,7 @@ export function measurements({
   // An undercut is defined by what gets in rather than by what fits once there,
   // so the Engine states the entry separately. A T-slot cutter goes in sideways
   // and cannot be backed out, which is why the opening is its own number.
-  const entry = asNumber(sheetFacts.maxEntryCd)
+  const entry = sheetFacts?.kind === 'Tslot' ? asNumber(sheetFacts.maxEntryCd) : null
   if (entry !== null && entry > 0) {
     rows.push({
       key: 'entryCutter',
@@ -248,7 +250,8 @@ export function measurements({
     })
   }
 
-  const filletRadius = asNumber(sheetFacts.filletRadius)
+  const filletRadius =
+    sheetFacts && 'filletRadius' in sheetFacts ? asNumber(sheetFacts.filletRadius) : null
   if (filletRadius !== null && filletRadius > 0) {
     rows.push({
       key: 'floorFillet',
@@ -258,27 +261,14 @@ export function measurements({
     })
   }
 
-  // The Engine states a chamfer's angle under `bevel`, and states it in degrees
-  // from kernel 0.4.0 — before that in radians, under a name that says so.
-  // This read `facts.angle`, which no report has carried, so a chamfer showed
-  // no angle at all while the rule that judges chamfer angles read one.
-  const bevel = asRecord(sheetFacts.bevel)
-  const degrees = asNumber(bevel?.angleDeg)
-  const radians = asNumber(bevel?.angleRad)
-  const legacy = asNumber(sheetFacts.angle ?? sheetFacts.bevelAngle)
-  const angle = degrees ?? (radians === null ? legacy : radiansToDegrees(radians))
+  const angle = sheetFacts?.kind === 'Chamfer' ? asNumber(sheetFacts.bevel?.angleDeg) : null
 
   if (angle !== null) {
     rows.push({
       key: 'bevelAngle',
       label: 'Chamfer angle',
       value: `${angle.toFixed(1)}°`,
-      from:
-        degrees !== null
-          ? 'facts.bevel.angleDeg'
-          : radians !== null
-            ? 'facts.bevel.angleRad in degrees'
-            : 'facts.angle',
+      from: 'facts.bevel.angleDeg',
     })
   }
 

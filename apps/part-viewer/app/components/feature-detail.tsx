@@ -16,7 +16,7 @@ import { KindIcon, MeasurementIcon } from './feature-icons'
 
 /** The Engine's own family for a feature, for the drawing that stands for it. */
 const kindOf = (feature: PartFeature): string => {
-  const kind = facts(feature).kind
+  const kind = facts(feature)?.kind
   return typeof kind === 'string' ? kind : 'Other'
 }
 
@@ -196,8 +196,8 @@ export const FeatureDetail = ({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            {typeof facts(feature).kind === 'string' ? (
-              <Badge variant="secondary">{String(facts(feature).kind)}</Badge>
+            {facts(feature)?.kind ? (
+              <Badge variant="secondary">{facts(feature)?.kind}</Badge>
             ) : null}
             <Badge variant="info">{directionLabel(feature.machiningDirection)}</Badge>
             <span className="text-2xs text-zinc-400">

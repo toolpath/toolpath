@@ -8,14 +8,14 @@ import {
   tagsOfType,
 } from './report'
 
-const hole: PartFeature = {
+const hole = {
   featureTag: 'hole-123',
   featureType: 'blind_hole',
   regionIdxs: [3, 4],
   machiningDirection: { x: 0, y: 0, z: 1 },
   axis: { x: 0, y: 0, z: 1 } as never,
-  datasheet: { facts: { diameter: 6.35 } },
-}
+  datasheet: { facts: { kind: 'Hole', diameter: 6.35 } },
+} as unknown as PartFeature
 
 const wall: PartFeature = {
   featureTag: 'wall-456',

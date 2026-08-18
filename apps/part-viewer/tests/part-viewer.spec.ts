@@ -7,7 +7,7 @@ const readyEvent = {
     reportId: 'report-1',
     jobId: 'job-1',
     kernelVersion: 'test',
-    units: { length: 'mm', angle: 'rad' },
+    units: { length: 'mm', angle: 'deg' },
     regions: [],
     candidateDirections: [],
     meshPointCount: 0,
@@ -21,15 +21,46 @@ const readyEvent = {
     features: [
       {
         featureTag: 'hole-1',
-        featureType: 'blind_hole',
+        featureType: 'BlindHole',
         regionIdxs: [0],
         machiningDirection: { x: 0, y: 0, z: 1 },
         axis: { x: 0, y: 0, z: 1 },
-        datasheet: { facts: { diameter: 6.35 } },
+        datasheet: {
+          featureType: 'BlindHole',
+          zMin: -25.4,
+          zMax: 0,
+          extendedZMin: -25.4,
+          extendedZMax: 0,
+          radialStockToLeave: 0,
+          axialStockToLeave: 0,
+          toleranceBand: { atolIgnore: 0, atolDeviate: 0, atolMax: 0 },
+          hasFloor: true,
+          hasWall: true,
+          floorishArea: 0,
+          wallishArea: 0,
+          facts: {
+            kind: 'Hole',
+            diameter: 6.35,
+            fullConeDeg: 118,
+            isCounterbore: false,
+            holeProcess: 'Drill',
+            cd: {
+              ignore: { min: 6.35, max: 6.35 },
+              deviate: { min: 6.35, max: 6.35 },
+              effectiveAdaptive: { min: 6.35, max: 6.35 },
+              terminalCornerRadius: 0,
+            },
+            maxSpotDiameter: 0,
+            maxDrillDiameter: 6.35,
+            maxEndmillDiameter: 6.35,
+            filletRadius: 0,
+            filletHeight: 0,
+          },
+        },
       },
       {
         featureTag: 'wall-1',
-        featureType: 'wall',
+        featureType: 'Wall',
         regionIdxs: [1],
         machiningDirection: { x: -1, y: 0, z: 0 },
         axis: { x: 1, y: 0, z: 0 },
@@ -88,7 +119,7 @@ test('connects, uploads, opens a redacted inspector, and focuses a feature', asy
   // one reads it on the right. Nothing is read until somebody asks for it —
   // the panel opens on an invitation rather than on a guess.
   await expect(page.getByText('Click a face on the part')).toBeVisible()
-  await page.getByRole('button', { name: /Blind hole/ }).click()
+  await page.getByRole('button', { name: /BlindHole/ }).click()
   await page
     .getByRole('button', { name: /wall-1|hole-1/ })
     .first()
