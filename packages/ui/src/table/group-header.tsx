@@ -51,6 +51,7 @@ export const GroupHeader = ({
       }}
     >
       <CaretRightIcon
+        weight="bold"
         className={cn(
           'pointer-events-none fill-current text-gray dark:text-zinc-100 size-3 -rotate-90',
           { 'rotate-90': isCollapsed },

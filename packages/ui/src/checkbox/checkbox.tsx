@@ -68,8 +68,8 @@ export const Checkbox = ({
       {...props}
     >
       <BaseCheckbox.Indicator className="flex items-center justify-center text-white" keepMounted>
-        {checked && <CheckIcon className="w-full h-full" />}
-        {indeterminate && <MinusIcon className="w-full h-full" />}
+        {checked && <CheckIcon weight="bold" className="w-full h-full" />}
+        {indeterminate && <MinusIcon weight="bold" className="w-full h-full" />}
       </BaseCheckbox.Indicator>
     </BaseCheckbox.Root>
   )

@@ -103,6 +103,7 @@ export const List = () => {
                         {...renderProps}
                       >
                         <XIcon
+                          weight="regular"
                           className={cn({
                             'text-gray dark:text-zinc-950': variant === 'warning',
                             'text-white dark:text-zinc-50':

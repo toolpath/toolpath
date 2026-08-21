@@ -114,7 +114,7 @@ export const QuantityInput = ({
           },
         )}
       >
-        <MinusIcon className="size-3.5 text-white dark:text-zinc-100" />
+        <MinusIcon weight="bold" className="size-3.5 text-white dark:text-zinc-100" />
       </button>
       <input
         ref={ref}
@@ -151,7 +151,7 @@ export const QuantityInput = ({
           },
         )}
       >
-        <PlusIcon className="size-3.5 text-white dark:text-zinc-100" />
+        <PlusIcon weight="bold" className="size-3.5 text-white dark:text-zinc-100" />
       </button>
     </div>
   )

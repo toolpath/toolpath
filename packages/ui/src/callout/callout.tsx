@@ -172,7 +172,7 @@ const CalloutContent = ({ children, className }: CalloutContentProps) => {
               'transition-colors cursor-pointer',
             )}
           >
-            <XIcon className="size-3.5" />
+            <XIcon weight="bold" className="size-3.5" />
           </Popover.Close>
           {children}
         </Popover.Popup>
